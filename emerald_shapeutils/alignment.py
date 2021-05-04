@@ -10,7 +10,11 @@ from pyproj import Transformer
 from shapely import wkt
 from shapely.geometry import LineString, Point
 
-def redistribute_vertices(geom, distance):
+def resample_shape(geom, distance):
+    """Resamples shapely shape `geom` at positions `distance` apart
+    (measured in coordinate units). Currently only supports LineString
+    and MultiLineString.
+    """
     # adapted from
     # https://stackoverflow.com/questions/34906124/interpolating-every-x-distance-along-multiline-in-shapely
     # todo : this function assumes that the coordinate system is a cartesian system using metres. CCh, 2021-01-12
@@ -23,24 +27,21 @@ def redistribute_vertices(geom, distance):
             [geom.interpolate(float(n) / num_vert, normalized=True)
              for n in range(num_vert + 1)])
     elif geom.geom_type == 'MultiLineString':
-        parts = [redistribute_vertices(part, distance)
+        parts = [resample_shape(part, distance)
                  for part in geom]
         return type(geom)([p for p in parts if not p.is_empty])
     else:
         raise ValueError('unhandled geometry %s', (geom.geom_type,))
 
-def sample_raster(path_raster, x, y, crs_points):
-    with rasterio.open(path_raster) as tif:
-        x_trans, y_trans = Transformer.from_crs(crs_points, tif.crs, always_xy=True).transform(x,y)
+def sample_raster(raster, x, y, xy_crs):
+    """Sample data from a rasterio raster taking care to transform
+    coordinates. Returns numpy array (Npos, Mchannels)."""
+    x_trans, y_trans = Transformer.from_crs(xy_crs, raster.crs, always_xy=True).transform(x,y)
+    return np.array(list(raster.sample(np.column_stack((x_trans, y_trans)), 1)))
 
-        samples = tif.sample(np.column_stack((x_trans, y_trans)), 1)
-
-        terrain_elevations = []
-        for location in samples:
-            for band in location:
-                terrain_elevations.append(band)
-
-    return np.array(terrain_elevations)
+def sample_single_channel_raster_file(path_raster, x, y, crs_points):
+    with rasterio.open(path_raster) as raster:
+        return sample_raster(raster, x, y, xy_crs).T[0]
 
 def generate_interpolation_points_geodataframe(tunnel_alignment_shp,sampling_distance,
                                                dtm_tif, plot=False, xdist_shift=0):
@@ -55,7 +56,7 @@ def generate_interpolation_points_geodataframe_from_gdf(tunnel_alignment,samplin
     gs = tunnel_alignment
 
     # Interpolate points with regular spacing along the alignment
-    multiline_r = redistribute_vertices(gs.geometry.iloc[0], sampling_distance)
+    multiline_r = resample_shape(gs.geometry.iloc[0], sampling_distance)
     coords = np.array(multiline_r.coords)
     gs_x = coords[:,0]
     gs_y = coords[:,1]
@@ -82,7 +83,7 @@ def generate_interpolation_points_geodataframe_from_gdf(tunnel_alignment,samplin
 
     # if DTM specified, sample raster values at interpolation points along line
     if dtm_tif is not None:
-        gdf.loc[:,'topo'] = sample_raster(dtm_tif,
+        gdf.loc[:,'topo'] = sample_single_channel_raster_file(dtm_tif,
                                           gdf.x.to_numpy(),
                                           gdf.y.to_numpy(),
                                           gdf.crs)
