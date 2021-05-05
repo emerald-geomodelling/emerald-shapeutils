@@ -43,53 +43,42 @@ def sample_single_channel_raster_file(path_raster, x, y, xy_crs):
     with rasterio.open(path_raster) as raster:
         return sample_raster(raster, x, y, xy_crs).T[0]
     
-def generate_interpolation_points_geodataframe_from_gdf2(coords, crs, dtm_tif, plot=False, xdist_shift = 0):
-    gs_x = coords[:,0]
-    gs_y = coords[:,1]
-    xdist = coords[:,-1]
-    
-    if coords.shape[1] > 3:
-        gs_z = coords[:,2]
-    else:
-        gs_z = np.full(len(coords), np.nan)
-        
-    # create new dataframe as points
-    d = {'xdist':xdist,
-        'geometry':gpd.points_from_xy(gs_x, gs_y, gs_z),
-        'x':gs_x,
-        'y':gs_y,
-        'z':gs_z}
-    gdf = gpd.GeoDataFrame(d,crs=crs)
-
-    if xdist_shift is not None and xdist_shift !=0.0:
-        gdf.xdist = gdf.xdist+xdist_shift
-
-    # if DTM specified, sample raster values at interpolation points along line
-    if dtm_tif is not None:
-        gdf.loc[:,'topo'] = sample_single_channel_raster_file(dtm_tif,
-                                          gdf.x.to_numpy(),
-                                          gdf.y.to_numpy(),
-                                          gdf.crs)
-    else:
-        gdf.loc[:, 'topo'] = np.nan
-
-    return gdf
-
-def generate_interpolation_points_geodataframe_from_gdf(tunnel_alignment, sampling_distance, *arg, **kw):
-    shape = resample_shape(tunnel_alignment.geometry.iloc[0], sampling_distance)
+def sample_shape_to_points(shape, sampling_distance, crs):
+    shape = resample_shape(shape, sampling_distance)
     coords = np.array(shape.coords)
     xdists = np.arange(len(coords)) * sampling_distance
     coords = np.column_stack((coords, xdists))
-        
-    return generate_interpolation_points_geodataframe_from_gdf2(
-        coords,
-        tunnel_alignment.crs,
-        *arg, **kw)
 
-def generate_interpolation_points_geodataframe(tunnel_alignment_shp,sampling_distance,
-                                               dtm_tif, plot=False, xdist_shift=0):
+    x, y = coords[:,0], coords[:,1]
+    z = coords[:,2] if coords.shape[1] > 2 else np.full(len(coords), np.nan)
+        
+    return gpd.GeoDataFrame({'xdist':xdists,
+                             'geometry':gpd.points_from_xy(x, y, z),
+                             'x':x,
+                             'y':y,
+                             'z':z},
+                            crs=crs)
+
+def generate_interpolation_points_geodataframe_from_gdf(tunnel_alignment, sampling_distance, dtm_tif, xdist_shift = 0):
+    points = sample_shape_to_points(tunnel_alignment.geometry.iloc[0], sampling_distance, tunnel_alignment.crs)
+
+    if xdist_shift is not None and xdist_shift !=0.0:
+        points.xdist = points.xdist+xdist_shift
+
+    # if DTM specified, sample raster values at interpolation points along line
+    if dtm_tif is not None:
+        points.loc[:,'topo'] = sample_single_channel_raster_file(dtm_tif,
+                                                              points.x.to_numpy(),
+                                                              points.y.to_numpy(),
+                                                              points.crs)
+    else:
+        points.loc[:, 'topo'] = np.nan
+
+    return points
+
+def generate_interpolation_points_geodataframe(tunnel_alignment_shp,sampling_distance, dtm_tif, xdist_shift=0):
     #read the tunnel alignment shapefile as a GeoDataFrame
     tunnel_alignment = gpd.read_file(tunnel_alignment_shp)
     return generate_interpolation_points_geodataframe_from_gdf(
         tunnel_alignment,sampling_distance,
-        dtm_tif, plot, xdist_shift)
+        dtm_tif, xdist_shift)
