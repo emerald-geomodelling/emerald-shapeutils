@@ -42,6 +42,18 @@ def sample_raster(path_raster, x, y, crs_points):
 
     return np.array(terrain_elevations)
 
+
+def sample_raster_(path_raster, x, y, crs_points):
+    with rasterio.open(path_raster) as tif:
+        # tif = tif[tif > 0]
+        x_trans, y_trans = Transformer.from_crs(crs_points, tif.crs, always_xy=True).transform(x, y)
+
+        samples = np.array(list(tif.sample(np.column_stack((x_trans, y_trans)), 1)))[:, 0]
+        datafilt = np.isin(samples, tif.get_nodatavals())
+
+        samples[datafilt] = np.nan
+    return samples
+
 def generate_interpolation_points_geodataframe(tunnel_alignment_shp,sampling_distance,
                                                dtm_tif, plot=False, xdist_shift=0):
     #read the tunnel alignment shapefile as a GeoDataFrame
