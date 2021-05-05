@@ -40,10 +40,16 @@ def sample_raster(raster, x, y, xy_crs):
     return np.array(list(raster.sample(np.column_stack((x_trans, y_trans)), 1)))
 
 def sample_single_channel_raster_file(path_raster, x, y, xy_crs):
+    """Sample data from a geotiff file taking care to transform
+    coordinates. Returns numpy array (Npos, Mchannels)."""
     with rasterio.open(path_raster) as raster:
         return sample_raster(raster, x, y, xy_crs).T[0]
     
 def sample_shape_to_points(shape, sampling_distance, crs):
+    """Sample a Shapely shape at regular intervals and generate a
+    GeoPandas GeoDataFrame with point geometries, x, y and z columns,
+    as well as xdist, the distance along the shape."""
+
     shape = resample_shape(shape, sampling_distance)
     coords = np.array(shape.coords)
     xdists = np.arange(len(coords)) * sampling_distance
@@ -59,8 +65,14 @@ def sample_shape_to_points(shape, sampling_distance, crs):
                              'z':z},
                             crs=crs)
 
-def generate_interpolation_points_geodataframe_from_gdf(tunnel_alignment, sampling_distance, dtm_tif, xdist_shift = 0):
-    points = sample_shape_to_points(tunnel_alignment.geometry.iloc[0], sampling_distance, tunnel_alignment.crs)
+def generate_interpolation_points_geodataframe_from_gdf(shape_gdf, sampling_distance, dtm_tif, xdist_shift = 0):
+    """Sample a GeoPandas GeoDataFrame (with a single row) at even
+    intervals and sample a dtm at the same positions. Returns
+    GeoPandas GeoDataFrame with point geometries, x, y, z, xdist and
+    topo columns.
+    """
+    
+    points = sample_shape_to_points(shape_gdf.geometry.iloc[0], sampling_distance, shape_gdf.crs)
 
     if xdist_shift is not None and xdist_shift !=0.0:
         points.xdist = points.xdist+xdist_shift
@@ -76,9 +88,9 @@ def generate_interpolation_points_geodataframe_from_gdf(tunnel_alignment, sampli
 
     return points
 
-def generate_interpolation_points_geodataframe(tunnel_alignment_shp,sampling_distance, dtm_tif, xdist_shift=0):
+def generate_interpolation_points_geodataframe(shape_gdf_shp,sampling_distance, dtm_tif, xdist_shift=0):
     #read the tunnel alignment shapefile as a GeoDataFrame
-    tunnel_alignment = gpd.read_file(tunnel_alignment_shp)
+    shape_gdf = gpd.read_file(shape_gdf_shp)
     return generate_interpolation_points_geodataframe_from_gdf(
-        tunnel_alignment,sampling_distance,
+        shape_gdf,sampling_distance,
         dtm_tif, xdist_shift)
