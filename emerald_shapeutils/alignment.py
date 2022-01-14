@@ -56,7 +56,7 @@ def sample_shape_to_points(shape, sampling_distance, crs):
     coords = np.column_stack((coords, xdists))
 
     x, y = coords[:,0], coords[:,1]
-    z = coords[:,2] if coords.shape[1] > 2 else np.full(len(coords), np.nan)
+    z = coords[:,2] if shape.has_z else np.full(len(coords), np.nan)
         
     return gpd.GeoDataFrame({'xdist':xdists,
                              'geometry':gpd.points_from_xy(x, y, z),
