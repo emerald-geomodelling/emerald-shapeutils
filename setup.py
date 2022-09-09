@@ -6,7 +6,7 @@ import distutils.command.sdist
 
 setuptools.setup(
     name='emerald-shapeutils',
-    version='0.0.1',
+    version='0.0.2',
     description='Utils for handling shapes and rasters',
     long_description='Utils for handling shapes and rasters',
     long_description_content_type="text/markdown",
