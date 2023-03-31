@@ -10,6 +10,7 @@ from pyproj import Transformer
 from shapely import wkt
 from shapely.geometry import LineString, Point
 
+
 def resample_shape(geom, distance):
     """Resamples shapely shape `geom` at positions `distance` apart
     (measured in coordinate units). Currently only supports LineString
@@ -65,11 +66,15 @@ def sample_shape_to_points(shape, sampling_distance, crs):
                              'z':z},
                             crs=crs)
 
-def generate_interpolation_points_geodataframe_from_gdf(shape_gdf, sampling_distance, dtm_tif, xdist_shift = 0):
+def generate_interpolation_points_geodataframe_from_gdf(shape_gdf, sampling_distance, dtm_tif, xdist_shift = 0, xdist_lim=(None,None)):
     """Sample a GeoPandas GeoDataFrame (with a single row) at even
     intervals and sample a dtm at the same positions. Returns
     GeoPandas GeoDataFrame with point geometries, x, y, z, xdist and
     topo columns.
+    
+    additional keywords:
+    - xdist_shift: shift the start of the xdistance along the line by this many meters
+    - xdist_lim: drop interpolated points outside this interval of xdistances
     """
     
     points = sample_shape_to_points(shape_gdf.geometry.iloc[0], sampling_distance, shape_gdf.crs)
@@ -77,6 +82,15 @@ def generate_interpolation_points_geodataframe_from_gdf(shape_gdf, sampling_dist
     if xdist_shift is not None and xdist_shift !=0.0:
         points.xdist = points.xdist+xdist_shift
 
+    def is_valid_xdist_limit_number(input):
+        if input not in [None, 'None', np.nan, np.inf, -np.inf]:
+            if not isinstance(input, str):
+                return True
+        return False
+
+    if is_valid_xdist_limit_number( xdist_lim[0]) : points = points[ points.xdist >= xdist_lim[0] ]
+    if is_valid_xdist_limit_number( xdist_lim[1]) : points = points[ points.xdist <= xdist_lim[1] ]
+    
     # if DTM specified, sample raster values at interpolation points along line
     if dtm_tif is not None:
         points.loc[:,'topo'] = sample_single_channel_raster_file(dtm_tif,
@@ -88,9 +102,9 @@ def generate_interpolation_points_geodataframe_from_gdf(shape_gdf, sampling_dist
 
     return points
 
-def generate_interpolation_points_geodataframe(shape_gdf_shp,sampling_distance, dtm_tif, xdist_shift=0):
+def generate_interpolation_points_geodataframe(shape_gdf_shp,sampling_distance, dtm_tif, xdist_shift=0, xdist_lim=(None,None)):
     #read the tunnel alignment shapefile as a GeoDataFrame
     shape_gdf = gpd.read_file(shape_gdf_shp)
     return generate_interpolation_points_geodataframe_from_gdf(
         shape_gdf,sampling_distance,
-        dtm_tif, xdist_shift)
+        dtm_tif, xdist_shift, xdist_lim)
