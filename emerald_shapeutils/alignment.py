@@ -11,22 +11,32 @@ from shapely import wkt
 from shapely.geometry import LineString, Point
 
 
-def resample_shape(geom, distance):
+def resample_shape(geom, distance, normalized = False):
     """Resamples shapely shape `geom` at positions `distance` apart
     (measured in coordinate units). Currently only supports LineString
     and MultiLineString.
+
+    Setting keyword "normalized" to True will sample at the nearest increment that gives an exactly whole number of
+    sample points between the line's start and end. This was the old default but was changed normalized=False on
+    2024-02-12 since most users want a predictable, defined increment for distance between sample points.
     """
     # adapted from
     # https://stackoverflow.com/questions/34906124/interpolating-every-x-distance-along-multiline-in-shapely
     # todo : this function assumes that the coordinate system is a cartesian system using metres. CCh, 2021-01-12
 
     if geom.geom_type == 'LineString':
-        num_vert = int(round(geom.length / distance))
-        if num_vert == 0:
-            num_vert = 1
-        return LineString(
-            [geom.interpolate(float(n) / num_vert, normalized=True)
-             for n in range(num_vert + 1)])
+        if normalized:
+            num_vert = int(round(geom.length / distance))
+            if num_vert == 0:
+                num_vert = 1
+            return LineString(
+                [geom.interpolate(float(n) / num_vert, normalized=normalized)
+                 for n in range(num_vert + 1)])
+        else:
+            sample_distances = np.arange(0, geom.length, distance)
+            if len(sample_distances)==0: sample_distances=[0]
+            return LineString([geom.interpolate( d, normalized=normalized) for d in sample_distances])
+
     elif geom.geom_type == 'MultiLineString':
         parts = [resample_shape(part, distance)
                  for part in geom]
